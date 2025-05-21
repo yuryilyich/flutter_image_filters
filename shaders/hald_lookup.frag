@@ -4,6 +4,7 @@ precision mediump float;
 layout(location = 0) uniform lowp float inputIntensity;
 layout(location = 1) uniform vec2 screenSize;
 layout(location = 2) uniform lowp sampler2D inputImageTexture;
+layout(location = 3) uniform lowp sampler2D inputTextureCubeData;
 
 layout(location = 0) out vec4 fragColor;
 
@@ -74,5 +75,6 @@ vec4 processColor(vec4 sourceColor){
 
 void main() {
    vec2 textureCoordinate = FlutterFragCoord().xy / screenSize;
-   fragColor = texture(inputImageTexture, textureCoordinate);
+   vec4 sourceColor = texture(inputImageTexture, textureCoordinate);
+   fragColor = processColor(sourceColor);
 }
