@@ -18,6 +18,56 @@ vec2 computeSliceOffset(float slice, vec2 sliceSize) {
                           floor(slice / cubeColumns));
 }
 
+vec4 sampleAs3DTextureBilinear(vec3 textureColor) {
+    float slice = textureColor.b * 511.0;
+    float zOffset = fract(slice);
+
+    vec2 slice0Offset = computeSliceOffset(floor(slice), sliceSize);
+    vec2 slice1Offset = computeSliceOffset(ceil(slice), sliceSize);
+
+    vec2 slicePixelSize = sliceSize / cubeSize;
+    vec2 sliceInnerSize = slicePixelSize * (cubeSize - 1.0);
+
+    vec2 uv = slicePixelSize * 0.5 + textureColor.xy * sliceInnerSize;
+
+    // Compute the coordinates of the four surrounding texels
+    vec2 uv00 = floor(uv * cubeSize) / cubeSize;
+    vec2 uv11 = ceil(uv * cubeSize) / cubeSize;
+    vec2 uv01 = vec2(uv00.x, uv11.y);
+    vec2 uv10 = vec2(uv11.x, uv00.y);
+
+    // Offset into the LUT
+    vec2 texPos00_0 = slice0Offset + uv00;
+    vec2 texPos01_0 = slice0Offset + uv01;
+    vec2 texPos10_0 = slice0Offset + uv10;
+    vec2 texPos11_0 = slice0Offset + uv11;
+
+    vec2 texPos00_1 = slice1Offset + uv00;
+    vec2 texPos01_1 = slice1Offset + uv01;
+    vec2 texPos10_1 = slice1Offset + uv10;
+    vec2 texPos11_1 = slice1Offset + uv11;
+
+    // Bilinear interpolation weights
+    vec2 f = fract(uv * cubeSize);
+
+    // Sample slice 0
+    vec4 c00_0 = texture(inputTextureCubeData, texPos00_0);
+    vec4 c01_0 = texture(inputTextureCubeData, texPos01_0);
+    vec4 c10_0 = texture(inputTextureCubeData, texPos10_0);
+    vec4 c11_0 = texture(inputTextureCubeData, texPos11_0);
+    vec4 color0 = mix(mix(c00_0, c10_0, f.x), mix(c01_0, c11_0, f.x), f.y);
+
+    // Sample slice 1
+    vec4 c00_1 = texture(inputTextureCubeData, texPos00_1);
+    vec4 c01_1 = texture(inputTextureCubeData, texPos01_1);
+    vec4 c10_1 = texture(inputTextureCubeData, texPos10_1);
+    vec4 c11_1 = texture(inputTextureCubeData, texPos11_1);
+    vec4 color1 = mix(mix(c00_1, c10_1, f.x), mix(c01_1, c11_1, f.x), f.y);
+
+    // Trilinear interpolation between slices
+    return mix(color0, color1, zOffset);
+}
+
 vec4 sampleAs3DTexture(vec3 textureColor) {
   float slice = textureColor.b * 511.0;
   float zOffset = fract(slice);                         // dist between slices
@@ -37,7 +87,7 @@ vec4 sampleAs3DTexture(vec3 textureColor) {
 }
 
 vec4 processColor(vec4 sourceColor){
-   vec4 newColor = sampleAs3DTexture(clamp(sourceColor.rgb, 0.0, 1.0));
+   vec4 newColor = sampleAs3DTextureBilinear(clamp(sourceColor.rgb, 0.0, 1.0));
    return mix(sourceColor, vec4(newColor.rgb, sourceColor.w), inputIntensity);
 }
 
