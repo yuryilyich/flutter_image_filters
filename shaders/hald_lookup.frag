@@ -14,26 +14,66 @@ const float cubeColumns = 8.0;
 const vec2 sliceSize = vec2(1.0 / 8.0, 1.0 / 64.0);
 
 vec2 computeSliceOffset(float slice, vec2 sliceSize) {
-  return sliceSize * vec2(mod(slice, cubeColumns),
-                          floor(slice / cubeColumns));
+  return sliceSize * vec2(mod(slice, cubeColumns), floor(slice / cubeColumns));
 }
 
 vec4 sampleAs3DTexture(vec3 textureColor) {
-  float slice = textureColor.b * 511.0;
-  float zOffset = fract(slice);                         // dist between slices
+  // Scale to LUT coordinate system
+  vec3 coord = clamp(textureColor, 0.0, 1.0) * (cubeSize - 1.0);
 
-  vec2 slice0Offset = computeSliceOffset(floor(slice), sliceSize);
-  vec2 slice1Offset = computeSliceOffset(ceil(slice), sliceSize);
+  // Indices
+  vec3 index0 = floor(coord);
+  vec3 index1 = min(index0 + 1.0, cubeSize - 1.0);
 
-  vec2 slicePixelSize = sliceSize / cubeSize;               // space of 1 pixel
-  vec2 sliceInnerSize = slicePixelSize * (cubeSize - 1.0);  // space of size pixels
+  // Fractional part
+  vec3 frac = coord - index0;
 
-  vec2 uv = slicePixelSize * 0.5 + textureColor.xy * sliceInnerSize;
-  vec2 texPos1 = slice0Offset + uv;
-  vec2 texPos2 = slice1Offset + uv;
-  vec4 slice0Color = texture(inputTextureCubeData, texPos1);
-  vec4 slice1Color = texture(inputTextureCubeData, texPos2);
-  return mix(slice0Color, slice1Color, zOffset);
+  // Convert (x, y, z) to slice and uv
+  float slice00 = index0.z * cubeSize * cubeSize + index0.y * cubeSize + index0.x;
+  float slice01 = index1.z * cubeSize * cubeSize + index0.y * cubeSize + index0.x;
+  float slice10 = index0.z * cubeSize * cubeSize + index1.y * cubeSize + index0.x;
+  float slice11 = index1.z * cubeSize * cubeSize + index1.y * cubeSize + index0.x;
+
+  float slice00_1 = index0.z * cubeSize * cubeSize + index0.y * cubeSize + index1.x;
+  float slice01_1 = index1.z * cubeSize * cubeSize + index0.y * cubeSize + index1.x;
+  float slice10_1 = index0.z * cubeSize * cubeSize + index1.y * cubeSize + index1.x;
+  float slice11_1 = index1.z * cubeSize * cubeSize + index1.y * cubeSize + index1.x;
+
+  // Helper to get LUT tex coord from flat index
+  vec2 getUV(float slice) {
+    float z = floor(slice / (cubeSize * cubeSize));
+    float rem = mod(slice, cubeSize * cubeSize);
+    float y = floor(rem / cubeSize);
+    float x = mod(rem, cubeSize);
+
+    float sliceIndex = z * cubeColumns + floor(y / cubeRows);
+    vec2 sliceOffset = computeSliceOffset(sliceIndex, sliceSize);
+    vec2 slicePixelSize = sliceSize / cubeSize;
+    vec2 sliceInnerSize = slicePixelSize * (cubeSize - 1.0);
+
+    vec2 uv = slicePixelSize * 0.5 + vec2(x, y) * slicePixelSize;
+    return sliceOffset + uv;
+  }
+
+  vec4 c000 = texture(inputTextureCubeData, getUV(slice00));
+  vec4 c001 = texture(inputTextureCubeData, getUV(slice01));
+  vec4 c010 = texture(inputTextureCubeData, getUV(slice10));
+  vec4 c011 = texture(inputTextureCubeData, getUV(slice11));
+  vec4 c100 = texture(inputTextureCubeData, getUV(slice00_1));
+  vec4 c101 = texture(inputTextureCubeData, getUV(slice01_1));
+  vec4 c110 = texture(inputTextureCubeData, getUV(slice10_1));
+  vec4 c111 = texture(inputTextureCubeData, getUV(slice11_1));
+
+  // Interpolate
+  vec4 c00 = mix(c000, c100, frac.x);
+  vec4 c01 = mix(c001, c101, frac.x);
+  vec4 c10 = mix(c010, c110, frac.x);
+  vec4 c11 = mix(c011, c111, frac.x);
+
+  vec4 c0 = mix(c00, c10, frac.y);
+  vec4 c1 = mix(c01, c11, frac.y);
+
+  return mix(c0, c1, frac.z);
 }
 
 vec4 processColor(vec4 sourceColor){
